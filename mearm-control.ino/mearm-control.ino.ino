@@ -10,18 +10,16 @@ const int lArmMin = 0;
 const int rArmMax = 180;
 const int rArmMin = 0;
 
-int mode = 1;  //1为摇杆模式//0为指令模式
-
 unsigned long currentTime = 0;
 unsigned long interval = 15;
 int dead = 20;  //死区范围
+  unsigned int delaytime = 15;  
 
 struct smoothServo {
   Servo servo;
   int joyPin;
   int pin;
   int initialAngle;
-  int goalAngle;
   unsigned long lastTime;
   int angleMin;
   int angleMax;
@@ -29,17 +27,15 @@ struct smoothServo {
 
 //初始化四舵机
 smoothServo arms[4] = {
-  { {}, A0, 9, 90, 90, 0, baseMin, baseMax },  //左边x反向控制底座
-  { {}, A1, 6, 90, 90, 0, clawMin, clawMax },  //左边y反向控制夹子
-  { {}, A2, 8, 90, 90, 0, lArmMin, lArmMax },  //右边x反向控制前臂(左向上，右向下)
-  { {}, A3, 7, 90, 90, 0, rArmMin, rArmMax },  //右边y反向控制后臂
+  { {}, A0, 9, 90, 0, baseMin, baseMax },  //左边x反向控制底座
+  { {}, A1, 6, 90, 0, clawMin, clawMax },  //左边y反向控制夹子
+  { {}, A2, 8, 90, 0, lArmMin, lArmMax },  //右边x反向控制前臂(左向上，右向下)
+  { {}, A3, 7, 90, 0, rArmMin, rArmMax },  //右边y反向控制后臂
 };
 
-void chooseServoRun(char instruction, int goalAngle, int delaytime);
-void run1(int delaytime);
+void chooseServoRun(char instruction, int goalAngle);
+void run1();
 void nowstate();
-void switchMode1();
-void switchMode2();
 void joyStickControl(smoothServo &s);
 
 void setup() {
@@ -54,51 +50,42 @@ void setup() {
 }
 
 void loop() {
-  if (mode == 0) {       ////指令模式////
-    int delaytime = 15;  //可变值
-    ////////////输入b,r,l,c时要加数字////////////
-    if (Serial.available() > 0) {
-      char instruction = Serial.read();
-      Serial.print("instruction is");
-      Serial.print(instruction);
-      Serial.print("\n");
-
-      int goalAngle = Serial.parseInt();
-      while (Serial.available() > 0) { Serial.read(); }
-      if (instruction == 'b' || instruction == 'r' || instruction == 'l' || instruction == 'c') {
-        chooseServoRun(instruction, goalAngle, delaytime);
-      } else if (instruction == 'o') {
-        nowstate();
-      } else if (instruction == 'i') {
-        run1(delaytime);
-      } else if (instruction == 'm') {
-        switchMode1();  //按m切换为摇杆模式
-      }
-    }
-  } else {
-    if (Serial.available() > 0) {
-      char instruction = Serial.read();
-      Serial.print("instruction is");
-      Serial.print(instruction);
-      Serial.print("\n");
-      if (instruction == 'n') {
-        switchMode2();  //按n切换为指令模式
-      }
+  ////////////输入b,r,l,c时要加数字////////////
+  if (Serial.available() > 0) {
+    char instruction = Serial.read();
+    Serial.print("instruction is");
+    Serial.print(instruction);
+    Serial.print("\n");
+    int goalAngle = Serial.parseInt();
+    while (Serial.available() > 0) { Serial.read(); }
+    if (instruction == 'b' || instruction == 'r' || instruction == 'l' || instruction == 'c') {
+      chooseServoRun(instruction, goalAngle);
+    } else if (instruction == 'k') {//按k查看现在的状态
+      nowstate();
+    } else if (instruction == 'i') {//初始化
+      run1();
+    } else if (instruction == 'O') {//打开夹子
+      chooseServoRun('c', clawMax);
+    } else if (instruction == 'S') {//关闭夹子
+      chooseServoRun('c', clawMin);
+    } else if (instruction == 'H') {//加速
+      delaytime -= 5;
+      interval -= 5;
+    }else if (instruction == 'L') {//加速
+      delaytime += 5;
+      interval += 5;
     }
   }
-
-  if (mode == 1) {  ////摇杆模式////
-    int i;
-    for (i = 0; i < 4; i++) {
-      joyStickControl(arms[i]);
-    }
+  int i;
+  for (i = 0; i < 4; i++) {
+    joyStickControl(arms[i]);
   }
 }
 
 
 
 //函数1
-void chooseServoRun(char instruction, int goalAngle, int delaytime) {
+void chooseServoRun(char instruction, int goalAngle) {
   int i;
   int idx;
   Servo *myservo;
@@ -156,16 +143,16 @@ void chooseServoRun(char instruction, int goalAngle, int delaytime) {
 }
 
 //函数2
-void run1(int delaytime) {
+void run1() {//初始值要改
   int i;
   int action1[4][3] = {
-    { 'b', 90, delaytime },
-    { 'r', 90, delaytime },
-    { 'l', 90, delaytime },
-    { 'c', 90, delaytime },
+    { 'b', 90 },
+    { 'r', 90 },
+    { 'l', 90 },
+    { 'c', 90 },
   };
   for (i = 0; i < 4; i++) {
-    chooseServoRun(action1[i][0], action1[i][1], action1[i][2]);
+    chooseServoRun(action1[i][0], action1[i][1]);
   }
 }
 
@@ -182,17 +169,6 @@ void nowstate() {
 }
 
 //函数4
-void switchMode1() {
-  mode = 1;
-  Serial.println("--------Joystick mode is activated--------");
-}
-//函数5
-void switchMode2() {
-  mode = 0;
-  Serial.println("--------instruction mode is activated--------");
-}
-
-//函数6
 void joyStickControl(smoothServo &s) {
   int step = 0;
   currentTime = millis();
