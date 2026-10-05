@@ -12,6 +12,45 @@ const int rArmMin = 0;
 
 int mode = 1;  //1为摇杆模式//0为指令模式
 
+bool task2Running = false;
+int task2Step = 0;
+const int task2TotalStep = 8;
+char group;
+int (*currentAction)[8][4][2];
+
+int actionA[8][4][2] = {
+    //具体数值未测量
+    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+  };
+  int actionB[8][4][2] = {
+    //具体数值未测量
+    { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
+    { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
+    { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
+    { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
+    { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
+    { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
+    { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
+    { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
+  };
+  int actionC[8][4][2] = {
+    //具体数值未测量
+    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+    { { 'b', 45 }, { 'l', 46 }, { 'r', 47 }, { 'c', 48 } },
+    { { 'b', 135 }, { 'l', 134 }, { 'r', 133 }, { 'c', 132 } },
+    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+    { { 'b', 45 }, { 'l', 44 }, { 'r', 43 }, { 'c', 42 } },
+    { { 'b', 135 }, { 'l', 136 }, { 'r', 137 }, { 'c', 138 } },
+  };
 
 unsigned long currentTime = 0;
 unsigned long interval = 15;
@@ -45,6 +84,10 @@ void nowstate();
 void joyStickControl(smoothServo &s);
 void switchMode1();
 void switchMode2();
+void task2();
+void run2Start();
+void run3Start();
+void run4Start();
 
 void setup() {
   int i;
@@ -62,6 +105,7 @@ void loop() {
   ////////////输入b,r,l,c时要加数字////////////
   if (mode == 0) {
     updateServo();
+    task2();
     if (Serial.available() > 0) {
       char instruction = Serial.read();
       if (instruction == ' ' || instruction == '\n' || instruction == '\r') { return; }
@@ -90,6 +134,14 @@ void loop() {
         }
       } else if (instruction == 'm') {
         switchMode1();  //按m切换为摇杆模式
+      } else if (instruction == 'A') {
+        run2Start();
+      }
+      else if (instruction == 'B') {
+        run3Start();
+      }
+      else if (instruction == 'C') {
+        run4Start();
       }
     }
   } else {
@@ -242,4 +294,50 @@ void switchMode2() {
   for (i = 0; i < 4; i++) {
     arms[i].currentAngle = arms[i].servo.read();
   }
+}
+
+
+void task2() {
+  int i;
+
+  if(group=='A'){currentAction=&actionA;}
+  else if(group=='B'){currentAction=&actionB;}
+  else if(group=='C'){currentAction=&actionC;}
+  bool stepAllDone = false;
+  if (arms[0].isMoving == false && arms[1].isMoving == false && arms[2].isMoving == false && arms[3].isMoving == false) { stepAllDone = true; }
+  if (!task2Running) { return; }
+  if (task2Step >= task2TotalStep) {
+    task2Running = false;
+    Serial.println("task2 finished");
+    return;
+  }
+  if (stepAllDone) {
+    Serial.print("task2Step is ");
+    Serial.println(task2Step);
+    for (i = 0; i < 4; i++) {
+      chooseServoRun((*currentAction)[task2Step][i][0], (*currentAction)[task2Step][i][1]);
+    }
+    task2Step++;
+  }
+}
+
+void run2Start() {
+  task2Running = true;
+  task2Step = 0;
+  Serial.println("run2 start");
+  group='A';
+}
+
+void run3Start() {
+  task2Running = true;
+  task2Step = 0;
+  Serial.println("run3 start");
+  group='B';
+}
+
+void run4Start() {
+  task2Running = true;
+  task2Step = 0;
+  Serial.println("run4 start");
+  group='C';
 }
