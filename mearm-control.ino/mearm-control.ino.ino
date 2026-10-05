@@ -15,7 +15,7 @@ int mode = 1;  //1为摇杆模式//0为指令模式
 
 unsigned long currentTime = 0;
 unsigned long interval = 15;
-int dead = 20;  //死区范围
+int dead = 50;  //死区范围
 
 struct smoothServo {
   Servo servo;
@@ -53,6 +53,7 @@ void setup() {
     arms[i].servo.write(arms[i].currentAngle);
     delay(20);
   }
+  Serial.setTimeout(50);
   Serial.begin(9600);
   Serial.println("please input instruction and goalAngle");
 }
@@ -63,12 +64,9 @@ void loop() {
     updateServo();
     if (Serial.available() > 0) {
       char instruction = Serial.read();
-      Serial.print("instruction is");
-      Serial.print(instruction);
-      Serial.print("\n");
-      int goalAngle = Serial.parseInt();
-      while (Serial.available() > 0) { Serial.read(); }
+      if (instruction == ' ' || instruction == '\n' || instruction == '\r') { return; }
       if (instruction == 'b' || instruction == 'r' || instruction == 'l' || instruction == 'c') {
+        int goalAngle = Serial.parseInt();
         chooseServoRun(instruction, goalAngle);
       } else if (instruction == 'k') {  //按k查看现在的状态
         nowstate();
@@ -82,13 +80,13 @@ void loop() {
         interval -= 5;
         if (interval < 2) {
           interval = 2;
-          Serial.println("Warning:achieve minimum");
+          Serial.println("Warning:delayTime achieve minimum");
         }
       } else if (instruction == 'L') {  //减速
         interval += 5;
         if (interval > 50) {
           interval = 50;
-          Serial.println("Warning:achieve maximum");
+          Serial.println("Warning:delaytime achieve maximum");
         }
       } else if (instruction == 'm') {
         switchMode1();  //按m切换为摇杆模式
@@ -152,6 +150,7 @@ void chooseServoRun(char instruction, int goalAngle) {
   arms[idx].goalAngle = goalAngle;
   arms[idx].isMoving = true;
   Serial.println(arms[idx].goalAngle);
+  arms[idx].lastTime = millis();
 }
 
 //函数2
@@ -229,10 +228,18 @@ void joyStickControl(smoothServo &s) {
 void switchMode1() {
   mode = 1;
   Serial.println("--------Joystick mode is activated--------");
+  int i;
+  for (i = 0; i < 4; i++) {
+    arms[i].isMoving = false;
+  }
 }
 
 //函数7
 void switchMode2() {
   mode = 0;
   Serial.println("--------instruction mode is activated--------");
+  int i;
+  for (i = 0; i < 4; i++) {
+    arms[i].currentAngle = arms[i].servo.read();
+  }
 }
