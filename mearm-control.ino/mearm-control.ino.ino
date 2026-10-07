@@ -1,4 +1,7 @@
 #include <Servo.h>
+#define _SS_MAX_RX_BUFF 32
+#include <SoftwareSerial.h>
+SoftwareSerial mySerial(2, 3);  // RX=2, TX=3
 
 //测出各舵机的极限值(还未测量)(极限保护)
 const int baseMax = 180;
@@ -12,49 +15,61 @@ const int rArmMin = 0;
 
 int mode = 1;  //1为摇杆模式//0为指令模式
 
+//task2
 bool task2Running = false;
 int task2Step = 0;
 const int task2TotalStep = 8;
-char group;
-int (*currentAction)[8][4][2];
+char group = 'A';
+unsigned char (*currentAction)[8][4][2];
 
-int actionA[8][4][2] = {
-    //具体数值未测量
-    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
-    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
-    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
-    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
-    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
-    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
-    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
-    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
-  };
-  int actionB[8][4][2] = {
-    //具体数值未测量
-    { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
-    { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
-    { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
-    { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
-    { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
-    { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
-    { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
-    { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
-  };
-  int actionC[8][4][2] = {
-    //具体数值未测量
-    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
-    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
-    { { 'b', 45 }, { 'l', 46 }, { 'r', 47 }, { 'c', 48 } },
-    { { 'b', 135 }, { 'l', 134 }, { 'r', 133 }, { 'c', 132 } },
-    { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
-    { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
-    { { 'b', 45 }, { 'l', 44 }, { 'r', 43 }, { 'c', 42 } },
-    { { 'b', 135 }, { 'l', 136 }, { 'r', 137 }, { 'c', 138 } },
-  };
+const unsigned char actionA[8][4][2] PROGMEM = {
+  //具体数值未测量
+  { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+  { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+  { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+  { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+  { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+  { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+  { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+  { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+};
+const unsigned char actionB[8][4][2] PROGMEM = {
+  //具体数值未测量
+  { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
+  { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
+  { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
+  { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
+  { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
+  { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
+  { { 'b', 45 }, { 'l', 135 }, { 'r', 45 }, { 'c', 135 } },
+  { { 'b', 135 }, { 'l', 45 }, { 'r', 135 }, { 'c', 45 } },
+};
+const unsigned char actionC[8][4][2] PROGMEM = {
+  //具体数值未测量
+  { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+  { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+  { { 'b', 45 }, { 'l', 46 }, { 'r', 47 }, { 'c', 48 } },
+  { { 'b', 135 }, { 'l', 134 }, { 'r', 133 }, { 'c', 132 } },
+  { { 'b', 1 }, { 'l', 2 }, { 'r', 3 }, { 'c', 4 } },
+  { { 'b', 179 }, { 'l', 178 }, { 'r', 177 }, { 'c', 176 } },
+  { { 'b', 45 }, { 'l', 44 }, { 'r', 43 }, { 'c', 42 } },
+  { { 'b', 135 }, { 'l', 136 }, { 'r', 137 }, { 'c', 138 } },
+};
 
 unsigned long currentTime = 0;
 unsigned long interval = 15;
 int dead = 50;  //死区范围
+
+//录制
+bool isRecording = false;
+int recordIndex = 0;
+unsigned char recordData[150][4];
+unsigned long lastRecordTime = 0;
+
+//重播
+bool isPlaying = false;
+unsigned long lastPlayTime = 0;
+int playIndex = 0;
 
 struct smoothServo {
   Servo servo;
@@ -88,6 +103,11 @@ void task2();
 void run2Start();
 void run3Start();
 void run4Start();
+void parseCmd(char instruction, bool fromSerial);
+void Record();
+void playRecordedAction();
+void goHome();
+void updatePlay();
 
 void setup() {
   int i;
@@ -97,52 +117,28 @@ void setup() {
     delay(20);
   }
   Serial.setTimeout(50);
+  mySerial.setTimeout(50);
   Serial.begin(9600);
+  mySerial.begin(9600);
   Serial.println("please input instruction and goalAngle");
 }
 
 void loop() {
+  if (isRecording) { Record(); }
   ////////////输入b,r,l,c时要加数字////////////
   if (mode == 0) {
     updateServo();
     task2();
-    if (Serial.available() > 0) {
+    if (isPlaying) { updatePlay(); }
+    while (Serial.available() > 0) {
       char instruction = Serial.read();
-      if (instruction == ' ' || instruction == '\n' || instruction == '\r') { return; }
-      if (instruction == 'b' || instruction == 'r' || instruction == 'l' || instruction == 'c') {
-        int goalAngle = Serial.parseInt();
-        chooseServoRun(instruction, goalAngle);
-      } else if (instruction == 'k') {  //按k查看现在的状态
-        nowstate();
-      } else if (instruction == 'i') {  //初始化
-        run1();
-      } else if (instruction == 'O') {  //打开夹子
-        chooseServoRun('c', clawMin);
-      } else if (instruction == 'S') {  //关闭夹子
-        chooseServoRun('c', clawMax);
-      } else if (instruction == 'H') {  //加速
-        interval -= 5;
-        if (interval < 2) {
-          interval = 2;
-          Serial.println("Warning:delayTime achieve minimum");
-        }
-      } else if (instruction == 'L') {  //减速
-        interval += 5;
-        if (interval > 50) {
-          interval = 50;
-          Serial.println("Warning:delaytime achieve maximum");
-        }
-      } else if (instruction == 'm') {
-        switchMode1();  //按m切换为摇杆模式
-      } else if (instruction == 'A') {
-        run2Start();
-      }
-      else if (instruction == 'B') {
-        run3Start();
-      }
-      else if (instruction == 'C') {
-        run4Start();
-      }
+      if (instruction == ' ' || instruction == '\n' || instruction == '\r') { continue; }
+      parseCmd(instruction, false);
+    }
+    while (mySerial.available() > 0) {
+      char instruction = mySerial.read();
+      if (instruction == ' ' || instruction == '\n' || instruction == '\r') { continue; }
+      parseCmd(instruction, true);
     }
   } else {
     if (Serial.available() > 0) {
@@ -296,13 +292,17 @@ void switchMode2() {
   }
 }
 
-
+//函数8
 void task2() {
   int i;
 
-  if(group=='A'){currentAction=&actionA;}
-  else if(group=='B'){currentAction=&actionB;}
-  else if(group=='C'){currentAction=&actionC;}
+  if (group == 'A') {
+    currentAction = &actionA;
+  } else if (group == 'B') {
+    currentAction = &actionB;
+  } else if (group == 'C') {
+    currentAction = &actionC;
+  }
   bool stepAllDone = false;
   if (arms[0].isMoving == false && arms[1].isMoving == false && arms[2].isMoving == false && arms[3].isMoving == false) { stepAllDone = true; }
   if (!task2Running) { return; }
@@ -315,29 +315,136 @@ void task2() {
     Serial.print("task2Step is ");
     Serial.println(task2Step);
     for (i = 0; i < 4; i++) {
-      chooseServoRun((*currentAction)[task2Step][i][0], (*currentAction)[task2Step][i][1]);
+      char cmd = pgm_read_byte(&(*currentAction)[task2Step][i][0]);
+      int ang = pgm_read_byte(&(*currentAction)[task2Step][i][1]);
+      chooseServoRun(cmd, ang);
     }
     task2Step++;
   }
 }
 
+//函数9
 void run2Start() {
   task2Running = true;
   task2Step = 0;
   Serial.println("run2 start");
-  group='A';
+  group = 'A';
 }
 
+//函数10
 void run3Start() {
   task2Running = true;
   task2Step = 0;
   Serial.println("run3 start");
-  group='B';
+  group = 'B';
 }
 
+//函数11
 void run4Start() {
   task2Running = true;
   task2Step = 0;
   Serial.println("run4 start");
-  group='C';
+  group = 'C';
+}
+
+//函数12
+void parseCmd(char instruction, bool fromSerial) {
+  if (instruction == 'b' || instruction == 'r' || instruction == 'l' || instruction == 'c') {
+    int goalAngle;
+    if (fromSerial == false) {
+      goalAngle = Serial.parseInt();
+    } else if (fromSerial == true) {
+      goalAngle = mySerial.parseInt();
+    }
+    chooseServoRun(instruction, goalAngle);
+  } else if (instruction == 'k') {  //按k查看现在的状态
+    nowstate();
+  } else if (instruction == 'i') {  //初始化
+    run1();
+  } else if (instruction == 'O') {  //打开夹子
+    chooseServoRun('c', clawMin);
+  } else if (instruction == 'S') {  //关闭夹子
+    chooseServoRun('c', clawMax);
+  } else if (instruction == 'H') {  //加速
+    interval -= 5;
+    if (interval < 2) {
+      interval = 2;
+      Serial.println("Warning:delayTime achieve minimum");
+    }
+  } else if (instruction == 'L') {  //减速
+    interval += 5;
+    if (interval > 50) {
+      interval = 50;
+      Serial.println("Warning:delaytime achieve maximum");
+    }
+  } else if (instruction == 'm') {
+    switchMode1();  //按m切换为摇杆模式
+  } else if (instruction == 'A') {
+    run2Start();
+  } else if (instruction == 'B') {
+    run3Start();
+  } else if (instruction == 'C') {
+    run4Start();
+  } else if (instruction == 'Q') {
+    isRecording = true;
+    recordIndex = 0;
+    mode=1;
+    Serial.println("Record start ! Joystick mode open !");
+  } else if (instruction == 'W') {
+    isRecording = false;
+    Serial.println("Record end !");
+  } else if (instruction == 'P') {
+    Serial.println("Play start !");
+    playRecordedAction();
+  } else if (instruction == 'E') {
+    goHome();
+  }
+}
+
+//函数13
+void Record() {
+  if (recordIndex >= 150) {
+    isRecording = false;
+    Serial.println("Record full !");
+    return;
+  }
+
+  if (millis() - lastRecordTime > 100) {
+    lastRecordTime = millis();
+    recordData[recordIndex][0] = arms[0].currentAngle;  //底座
+    recordData[recordIndex][1] = arms[1].currentAngle;  //夹子
+    recordData[recordIndex][2] = arms[2].currentAngle;  //前臂
+    recordData[recordIndex][3] = arms[3].currentAngle;  //后臂
+    recordIndex++;
+  }
+}
+
+
+//函数14
+void playRecordedAction() {
+  isPlaying = true;
+  lastPlayTime = 0;
+  playIndex = 0;
+}
+
+//函数15
+void goHome() {
+  chooseServoRun('b', recordData[0][0]);
+  chooseServoRun('c', recordData[0][1]);
+  chooseServoRun('l', recordData[0][2]);
+  chooseServoRun('r', recordData[0][3]);
+}
+
+//函数16
+void updatePlay() {
+  if (!isPlaying) { return; }
+  if (playIndex >= recordIndex) { isPlaying = false; }
+  if (millis() - lastPlayTime >= 100) {
+    lastPlayTime = millis();
+    chooseServoRun('b', recordData[playIndex][0]);
+    chooseServoRun('c', recordData[playIndex][1]);
+    chooseServoRun('l', recordData[playIndex][2]);
+    chooseServoRun('r', recordData[playIndex][3]);
+    playIndex++;
+  }
 }
