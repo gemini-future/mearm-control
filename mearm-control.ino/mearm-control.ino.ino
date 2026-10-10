@@ -1,7 +1,6 @@
 #include <Servo.h>
-#define _SS_MAX_RX_BUFF 32
+#include <math.h>
 #include <SoftwareSerial.h>
-SoftwareSerial mySerial(2, 3);  // RX=2, TX=3
 
 //测出各舵机的极限值(还未测量)(极限保护)
 const int baseMax = 180;
@@ -71,6 +70,48 @@ bool isPlaying = false;
 unsigned long lastPlayTime = 0;
 int playIndex = 0;
 
+//机械结构参数（未测）
+const float L1 = 80.0;  //大臂长度
+const float L2 = 80.0;  //小臂长度
+const float d = 80.0;   //笔到夹子的距离
+//零点偏移（未测）
+const float baseZero = 90.0;
+const float rArmZero = 90.0;
+const float lArmZero = 90.0;
+//方向修正(当舵机方向相反时改为-1.0)
+const float baseDir = 1.0;
+const float lArmDir = 1.0;
+const float rArmDir = 1.0;
+//抬笔，落笔的距离
+int PEN_DOWN = 0;  //落笔：接触纸面（拿笔时笔尖最好接触纸面--保证d不变）
+int PEN_UP = 30;   //抬笔：离开纸面
+const float pi = 3.1415926;
+
+unsigned long lastDrawTime = 0;
+const unsigned char drawInterval = 80;  //可改
+float pathX[10];                        //航电x坐标
+float pathY[10];                        //航电y坐标
+int pathCount = 0;                      //航点数量
+int currentSegment = 0;                 //现在是第几部分
+int segmentStep = 0;                    //某一段中的第几步
+int segmentStepCount = 25;              //一段总共有多少步
+
+enum DrawState {
+  DRAW_IDLE,     //空闲
+  DRAW_RUNNING,  //运行
+  DRAW_PAUSED    //暂停
+};
+DrawState drawState = DRAW_IDLE;
+
+enum DrawStep {
+  STEPONE_LIFT,    //移动到起点上方
+  STEPTWO_LOWER,   //落笔
+  STEPTHREE_DRAW,  //绘画
+  STEPFOUR_FINISH  //结束
+};
+DrawStep drawStep = STEPFOUR_FINISH;
+
+
 struct smoothServo {
   Servo servo;
   int joyPin;
@@ -86,7 +127,7 @@ struct smoothServo {
 //初始化四舵机
 smoothServo arms[4] = {
   { {}, A0, 9, 90, 90, 0, baseMin, baseMax, false },  //左边x反向控制底座
-  { {}, A1, 6, 90, 90, 0, clawMin, clawMax, false },  //左边y反向控制夹子(向上闭合，向下打开)
+  { {}, A1, 6, 90, 90, 0, clawMin, clawMax, false },  //左边y反向控制夹子(向下闭合，向上打开)
   { {}, A2, 8, 90, 90, 0, lArmMin, lArmMax, false },  //右边x反向控制前臂(左向上，右向下)
   { {}, A3, 7, 90, 90, 0, rArmMin, rArmMax, false },  //右边y反向控制后臂
 };
@@ -94,7 +135,7 @@ smoothServo arms[4] = {
 //函数定义
 void chooseServoRun(char instruction, int goalAngle);
 void updateServo();
-void run1();
+void goHome();
 void nowstate();
 void joyStickControl(smoothServo &s);
 void switchMode1();
@@ -106,9 +147,8 @@ void run4Start();
 void parseCmd(char instruction, bool fromSerial);
 void Record();
 void playRecordedAction();
-void goHome();
 void updatePlay();
-
+//======================================================初始化=====================================================================
 void setup() {
   int i;
   for (i = 0; i < 4; i++) {
@@ -117,14 +157,13 @@ void setup() {
     delay(20);
   }
   Serial.setTimeout(50);
-  mySerial.setTimeout(50);
   Serial.begin(9600);
-  mySerial.begin(9600);
   Serial.println("please input instruction and goalAngle");
 }
-
+//=======================================================主循环=========================================================================
 void loop() {
   if (isRecording) { Record(); }
+  updateDraw();
   ////////////输入b,r,l,c时要加数字////////////
   if (mode == 0) {
     updateServo();
@@ -135,11 +174,7 @@ void loop() {
       if (instruction == ' ' || instruction == '\n' || instruction == '\r') { continue; }
       parseCmd(instruction, false);
     }
-    while (mySerial.available() > 0) {
-      char instruction = mySerial.read();
-      if (instruction == ' ' || instruction == '\n' || instruction == '\r') { continue; }
-      parseCmd(instruction, true);
-    }
+    
   } else {
     if (Serial.available() > 0) {
       char instruction = Serial.read();
@@ -160,9 +195,7 @@ void loop() {
   }
 }
 
-
-
-
+//===============================================函数======================================================================
 //函数1
 void chooseServoRun(char instruction, int goalAngle) {
   int idx;
@@ -223,17 +256,11 @@ void updateServo() {
 }
 
 //函数3
-void run1() {  //初始值要改
-  int i;
-  int action1[4][2] = {
-    { 'b', 90 },
-    { 'r', 90 },
-    { 'l', 90 },
-    { 'c', 90 },
-  };
-  for (i = 0; i < 4; i++) {
-    chooseServoRun(action1[i][0], action1[i][1]);
-  }
+void goHome() {
+  chooseServoRun('b', 90);
+  chooseServoRun('c', 90);
+  chooseServoRun('l', 90);
+  chooseServoRun('r', 90);
 }
 
 //函数4
@@ -354,13 +381,10 @@ void parseCmd(char instruction, bool fromSerial) {
     if (fromSerial == false) {
       goalAngle = Serial.parseInt();
     } else if (fromSerial == true) {
-      goalAngle = mySerial.parseInt();
     }
     chooseServoRun(instruction, goalAngle);
   } else if (instruction == 'k') {  //按k查看现在的状态
     nowstate();
-  } else if (instruction == 'i') {  //初始化
-    run1();
   } else if (instruction == 'O') {  //打开夹子
     chooseServoRun('c', clawMin);
   } else if (instruction == 'S') {  //关闭夹子
@@ -385,19 +409,23 @@ void parseCmd(char instruction, bool fromSerial) {
     run3Start();
   } else if (instruction == 'C') {
     run4Start();
-  } else if (instruction == 'Q') {
+  } else if (instruction == 'Q') {  //开始录制
     isRecording = true;
     recordIndex = 0;
-    mode=1;
-    Serial.println("Record start ! Joystick mode open !");
-  } else if (instruction == 'W') {
+    lastRecordTime = 0;
+    mode = 1;
+    Serial.println("Record start ! Joystick mode turn on !");
+  } else if (instruction == 'W') {  //结束录制
     isRecording = false;
-    Serial.println("Record end !");
-  } else if (instruction == 'P') {
+    mode = 0;
+    Serial.println("Record end ! Joystick mode turn off !");
+  } else if (instruction == 'P') {  //重播
     Serial.println("Play start !");
     playRecordedAction();
-  } else if (instruction == 'E') {
+  } else if (instruction == 'E') {  //回中
     goHome();
+  } else if (instruction == 'J') {  //直接画直线
+    makeline();
   }
 }
 
@@ -428,14 +456,6 @@ void playRecordedAction() {
 }
 
 //函数15
-void goHome() {
-  chooseServoRun('b', recordData[0][0]);
-  chooseServoRun('c', recordData[0][1]);
-  chooseServoRun('l', recordData[0][2]);
-  chooseServoRun('r', recordData[0][3]);
-}
-
-//函数16
 void updatePlay() {
   if (!isPlaying) { return; }
   if (playIndex >= recordIndex) { isPlaying = false; }
@@ -447,4 +467,115 @@ void updatePlay() {
     chooseServoRun('r', recordData[playIndex][3]);
     playIndex++;
   }
+}
+
+//逆运动学
+bool solveIK(float x, float y, float z, int &bAngle, int &lAngle, int &rAngle) {
+  float theta1 = atan2(y, x);
+  float r = sqrt(x * x + y * y);
+  float k = z + d;
+  float L = sqrt(r * r + k * k);
+  float costheta3 = (L * L - L1 * L1 - L2 * L2) / (2 * L1 * L2);
+  if (costheta3 > 1.0 || costheta3 < -1.0) { return false; }
+  float theta3 = acos((L * L - L1 * L1 - L2 * L2) / (2 * L1 * L2));
+  float theta2 = atan2(k, r) - atan2(L2 * sin(theta3), L1 + L2 * cos(theta3));
+  bAngle = (int)(theta1 * 180.0 / pi) * baseDir + baseZero;
+  lAngle = (int)(theta3 * 180.0 / pi) * lArmDir + lArmZero;
+  rAngle = (int)(theta2 * 180.0 / pi) * rArmDir + rArmZero;
+  bAngle = constrain(bAngle, baseMin, baseMax);
+  lAngle = constrain(lAngle, lArmMin, lArmMax);
+  rAngle = constrain(rAngle, rArmMin, rArmMax);
+  return true;
+}
+
+void moveTo(float x, float y, float z) {
+  int bAngle;
+  int lAngle;
+  int rAngle;
+  if (solveIK(x, y, z, bAngle, lAngle, rAngle)) {
+    chooseServoRun('b', bAngle);
+    chooseServoRun('l', lAngle);
+    chooseServoRun('r', rAngle);
+  }
+}
+
+void startDraw() {
+  if (pathCount < 2) {
+    Serial.println("no path !");
+    return;
+  }
+  drawState = DRAW_RUNNING;
+  drawStep = STEPONE_LIFT;
+  currentSegment = 0;
+  segmentStep = 0;
+  lastDrawTime = 0;
+  Serial.println("draw start !");
+}
+
+void updateDraw() {
+  if (drawState != DRAW_RUNNING) { return; }
+  bool allRunDone;
+  if (arms[0].isMoving == false && arms[2].isMoving == false && arms[3].isMoving == false) { allRunDone = true; }
+  switch (drawStep) {
+
+    case STEPONE_LIFT:
+      moveTo(pathX[0], pathY[0], PEN_UP);
+      drawStep = STEPTWO_LOWER;
+      break;
+
+    case STEPTWO_LOWER:
+      if (allRunDone) {
+        moveTo(pathX[0], pathY[0], PEN_DOWN);
+        drawStep = STEPTHREE_DRAW;
+        currentSegment = 0;
+        segmentStep = 0;
+        lastDrawTime = millis();
+      }
+      break;
+
+    case STEPTHREE_DRAW:
+      if (allRunDone) {
+        if (millis() - lastDrawTime < drawInterval) { return; }
+        lastDrawTime=millis();
+        float t = 1.0*segmentStep / segmentStepCount;
+        float X = pathX[currentSegment] + (pathX[currentSegment + 1] - pathX[currentSegment]) * t;
+        float Y = pathY[currentSegment] + (pathY[currentSegment + 1] - pathY[currentSegment]) * t;
+        moveTo(X, Y, PEN_DOWN);
+        segmentStep++;
+        if (segmentStep > segmentStepCount) {
+          currentSegment++;
+          segmentStep = 0;
+        }
+        if (currentSegment >= pathCount - 1) {
+          moveTo(pathX[currentSegment], pathY[currentSegment], PEN_UP);
+          drawStep = STEPFOUR_FINISH;
+          drawState = DRAW_IDLE;
+          Serial.println("Draw finished !");
+        }
+      }
+    case STEPFOUR_FINISH:
+      break;
+  }
+}
+
+void makeline(){//数据未测量
+startDraw();
+pathCount=2;
+pathX[0]=50;
+pathY[0]=50;
+pathX[1]=70;
+pathY[1]=70;
+}
+
+void makeN(){//数据未测量
+  startDraw();
+  pathCount=4;
+  pathX[0]=-10;
+  pathY[0]=10;
+  pathX[1]=-10;
+  pathY[1]=30;
+  pathX[2]=10;
+  pathY[2]=10;
+  pathX[3]=10;
+  pathY[3]=30;
 }
