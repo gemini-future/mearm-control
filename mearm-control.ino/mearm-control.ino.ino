@@ -174,15 +174,20 @@ void loop() {
       if (instruction == ' ' || instruction == '\n' || instruction == '\r') { continue; }
       parseCmd(instruction, false);
     }
-    
+
   } else {
-    if (Serial.available() > 0) {
+    while (Serial.available() > 0) {
       char instruction = Serial.read();
+      if (instruction == ' ' || instruction == '\n' || instruction == '\r') { continue; }
       Serial.print("instruction is");
       Serial.print(instruction);
       Serial.print("\n");
       if (instruction == 'n') {
-        switchMode2();  //按n切换为指令模式
+        switchMode2();                  //按n切换为指令模式
+      } else if (instruction == 'W') {  //结束录制
+        isRecording = false;
+        mode = 0;
+        Serial.println("Record end ! Joystick mode turn off !");
       }
     }
   }
@@ -415,10 +420,6 @@ void parseCmd(char instruction, bool fromSerial) {
     lastRecordTime = 0;
     mode = 1;
     Serial.println("Record start ! Joystick mode turn on !");
-  } else if (instruction == 'W') {  //结束录制
-    isRecording = false;
-    mode = 0;
-    Serial.println("Record end ! Joystick mode turn off !");
   } else if (instruction == 'P') {  //重播
     Serial.println("Play start !");
     playRecordedAction();
@@ -434,6 +435,8 @@ void Record() {
   if (recordIndex >= 150) {
     isRecording = false;
     Serial.println("Record full !");
+    mode=0;
+    Serial.println("instruction mode turn on !");
     return;
   }
 
@@ -536,8 +539,8 @@ void updateDraw() {
     case STEPTHREE_DRAW:
       if (allRunDone) {
         if (millis() - lastDrawTime < drawInterval) { return; }
-        lastDrawTime=millis();
-        float t = 1.0*segmentStep / segmentStepCount;
+        lastDrawTime = millis();
+        float t = 1.0 * segmentStep / segmentStepCount;
         float X = pathX[currentSegment] + (pathX[currentSegment + 1] - pathX[currentSegment]) * t;
         float Y = pathY[currentSegment] + (pathY[currentSegment + 1] - pathY[currentSegment]) * t;
         moveTo(X, Y, PEN_DOWN);
@@ -558,24 +561,58 @@ void updateDraw() {
   }
 }
 
-void makeline(){//数据未测量
-startDraw();
-pathCount=2;
-pathX[0]=50;
-pathY[0]=50;
-pathX[1]=70;
-pathY[1]=70;
+void makeline() {  //数据未测量
+  startDraw();
+  pathCount = 2;
+  pathX[0] = 50;
+  pathY[0] = 50;
+  pathX[1] = 70;
+  pathY[1] = 70;
 }
 
-void makeN(){//数据未测量
+void makeN() {  //数据未测量
   startDraw();
-  pathCount=4;
-  pathX[0]=-10;
-  pathY[0]=10;
-  pathX[1]=-10;
-  pathY[1]=30;
-  pathX[2]=10;
-  pathY[2]=10;
-  pathX[3]=10;
-  pathY[3]=30;
+  pathCount = 4;
+  pathX[0] = -10;
+  pathY[0] = 10;
+  pathX[1] = -10;
+  pathY[1] = 30;
+  pathX[2] = 10;
+  pathY[2] = 10;
+  pathX[3] = 10;
+  pathY[3] = 30;
+}
+
+
+void pauseDraw() {  //暂停
+  if (drawState != DRAW_RUNNING) {
+    Serial.println("Wrong");
+    return;
+  }
+  drawState = DRAW_PAUSED;
+  Serial.println("Paused");
+}
+
+void resumeDraw() {  //恢复
+  if (drawState != DRAW_PAUSED) {
+    Serial.println("Wrong");
+    return;
+  }
+  drawState == DRAW_RUNNING;
+  lastDrawTime=millis();
+  Serial.println("resumed");
+}
+
+void stopDraw() {  //结束
+  if (drawState == DRAW_IDLE) {
+    Serial.println("Wrong");
+    return;
+  }
+  pathCount = 0;
+  currentSegment = 0;
+  segmentStep = 0;
+  drawState = DRAW_IDLE;
+  drawStep=STEPFOUR_FINISH;
+  moveTo(0,0,PEN_UP);
+  Serial.println("stopped");
 }
